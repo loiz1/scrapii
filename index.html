@@ -3,7 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>App Web Scraping</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://aistudiocdn.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' https://aistudiocdn.com; connect-src 'self' https://corsproxy.io; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>Web Scraping</title>
     <style>
         :root {
             --bg-color: #f0f2f5;
@@ -145,6 +149,80 @@
             color: var(--button-disabled-color);
             cursor: not-allowed;
         }
+
+        /* Enhanced History Item Styles */
+        .history-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.25rem;
+        }
+        .history-title {
+            font-weight: 500;
+            font-size: 0.85rem;
+            line-height: 1.2;
+            word-break: break-word;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            width: 100%;
+        }
+        .history-meta {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            font-size: 0.75rem;
+            width: 100%;
+        }
+        .history-meta .score {
+            padding: 0.1rem 0.3rem;
+            border-radius: 8px;
+            font-weight: 600;
+            min-width: 35px;
+            text-align: center;
+        }
+        .history-meta .score.good {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: var(--success-color);
+        }
+        .history-meta .score.warning {
+            background-color: rgba(255, 193, 7, 0.2);
+            color: var(--warning-color);
+        }
+        .history-meta .score.danger {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: var(--error-color);
+        }
+        .history-meta .keywords {
+            color: var(--primary-color);
+            font-style: italic;
+            flex: 1;
+            text-align: right;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* Match Percentage Styles */
+        .history-meta .match-score {
+            padding: 0.1rem 0.3rem;
+            border-radius: 8px;
+            font-weight: 600;
+            min-width: 35px;
+            text-align: center;
+            font-size: 0.7rem;
+        }
+        .history-meta .match-score.high {
+            background-color: rgba(40, 167, 69, 0.2);
+            color: var(--success-color);
+        }
+        .history-meta .match-score.medium {
+            background-color: rgba(255, 193, 7, 0.2);
+            color: var(--warning-color);
+        }
+        .history-meta .match-score.low {
+            background-color: rgba(220, 53, 69, 0.2);
+            color: var(--error-color);
+        }
         .sidebar .sidebar-actions {
             margin-top: 1rem;
             padding-top: 1rem;
@@ -160,6 +238,20 @@
         }
         .sidebar .sidebar-actions button:hover {
             background-color: #5a6268;
+        }
+        .sidebar .sidebar-actions button.ethical-mode-active {
+            background-color: var(--success-color);
+            color: white;
+        }
+        .sidebar .sidebar-actions button.ethical-mode-active:hover {
+            background-color: #218838;
+        }
+        .sidebar .sidebar-actions button.ethical-mode-inactive {
+            background-color: var(--error-color);
+            color: white;
+        }
+        .sidebar .sidebar-actions button.ethical-mode-inactive:hover {
+            background-color: #c82333;
         }
 
         .result-container {
@@ -241,6 +333,34 @@
         .summary-value-text {
              font-size: 0.9rem; color: #666; word-break: break-word;
         }
+
+        /* Robots.txt Section Styles */
+        .robots-txt-section {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+        .robots-txt-section h4 {
+            margin: 0 0 0.75rem 0;
+            font-size: 1rem;
+            color: var(--text-color);
+        }
+        .robots-txt-content {
+            background-color: #f8f9fa;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .robots-txt-content pre {
+            margin: 0;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
         .audit-item { display: flex; align-items: center; gap: 1rem; }
         .audit-icon { font-size: 1.2rem; }
         .audit-pass .audit-icon { color: var(--success-color); }
@@ -284,6 +404,256 @@
         .tech-warning { font-size: 0.7rem; color: var(--error-color); font-weight: 600; }
         .tech-beta { font-size: 0.7rem; color: var(--warning-color); font-weight: 600; }
         .tech-updated { font-size: 0.7rem; color: var(--success-color); font-weight: 600; }
+
+        /* User Detection Styles */
+        .users-detection {
+            margin-top: 0.5rem;
+        }
+        .users-status {
+            margin-bottom: 0.5rem;
+        }
+        .users-indicator {
+            font-weight: 500;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            display: inline-block;
+        }
+        .users-indicator.has-users {
+            background-color: #d1e7dd;
+            color: #0f5132;
+        }
+        .users-indicator.no-users {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .access-points-title {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #555;
+        }
+        .access-points-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .access-point-badge {
+            background-color: #e9ecef;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-color);
+            display: inline-block;
+        }
+
+        /* Scraping Policy Styles */
+        .ethical-mode-warning {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background-color: #fff3cd;
+            border: 1px solid var(--warning-color);
+            border-radius: 4px;
+            color: #856404;
+        }
+        .policy-status.prohibited {
+            background-color: #f8d7da;
+            border: 1px solid var(--error-color);
+            border-radius: 6px;
+            padding: 1rem;
+        }
+        .policy-status.allowed {
+            background-color: #d1e7dd;
+            border: 1px solid var(--success-color);
+            border-radius: 6px;
+            padding: 1rem;
+        }
+        .check.warning .audit-icon {
+            color: var(--warning-color);
+        }
+
+        /* Privacy Score Details */
+        .privacy-score-details {
+            margin-top: 0.5rem;
+            padding: 0.5rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .privacy-explanation {
+            color: #666;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+
+        /* Robots.txt Highlighted Styles */
+        .robots-txt-highlighted {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+        .robots-line {
+            padding: 1px 0;
+            transition: background-color 0.2s;
+        }
+        .robots-line.relevant-line {
+            background-color: rgba(0, 123, 255, 0.05);
+        }
+        .robots-line.user-agent-line {
+            background-color: rgba(0, 123, 255, 0.1);
+            font-weight: bold;
+        }
+        .robots-line.disallow-line {
+            background-color: rgba(220, 53, 69, 0.15);
+            color: #721c24;
+        }
+        .robots-line.disallow-line:hover {
+            background-color: rgba(220, 53, 69, 0.25);
+        }
+
+        /* Enhanced Security Analysis Styles */
+        .audit-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .audit-info {
+            color: #666;
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+            padding: 0.25rem 0.5rem;
+            background-color: rgba(0, 123, 255, 0.05);
+            border-radius: 3px;
+            border-left: 2px solid rgba(0, 123, 255, 0.3);
+        }
+        .audit-item .audit-icon {
+            flex-shrink: 0;
+        }
+
+        /* Enhanced Vulnerabilities Section Styles */
+        .vulnerable-techs-detailed {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .vulnerable-tech-card {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-left: 4px solid var(--warning-color);
+            transition: all 0.2s;
+        }
+        .vulnerable-tech-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+        }
+        .vulnerable-tech-card.critical {
+            border-left-color: var(--error-color);
+            background-color: rgba(220, 53, 69, 0.05);
+        }
+        .vulnerable-tech-card.high {
+            border-left-color: #ff6b35;
+            background-color: rgba(255, 107, 53, 0.05);
+        }
+        .vulnerable-tech-card.medium {
+            border-left-color: var(--warning-color);
+            background-color: rgba(255, 193, 7, 0.05);
+        }
+        .vulnerable-tech-card.low {
+            border-left-color: #17a2b8;
+            background-color: rgba(23, 162, 184, 0.05);
+        }
+        .vulnerability-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.75rem;
+        }
+        .vuln-main-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .tech-name {
+            font-weight: 600;
+            color: var(--text-color);
+            font-size: 1rem;
+        }
+        .tech-version {
+            font-size: 0.85rem;
+            color: #666;
+            background-color: rgba(0, 123, 255, 0.1);
+            padding: 0.2rem 0.5rem;
+            border-radius: 12px;
+            display: inline-block;
+            max-width: fit-content;
+        }
+        .severity-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .severity-badge.critical {
+            background-color: var(--error-color);
+            color: white;
+        }
+        .severity-badge.high {
+            background-color: #ff6b35;
+            color: white;
+        }
+        .severity-badge.medium {
+            background-color: var(--warning-color);
+            color: #333;
+        }
+        .severity-badge.low {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .vulnerability-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .vulnerability-description {
+            font-size: 0.9rem;
+            line-height: 1.4;
+            color: #555;
+        }
+        .vulnerability-lines, .vulnerability-recommendation {
+            font-size: 0.85rem;
+            padding: 0.5rem;
+            background-color: rgba(0, 123, 255, 0.05);
+            border-left: 2px solid rgba(0, 123, 255, 0.3);
+            border-radius: 4px;
+        }
+        .vulnerability-recommendation {
+            background-color: rgba(40, 167, 69, 0.05);
+            border-left-color: rgba(40, 167, 69, 0.3);
+        }
+        .no-vulnerabilities-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            text-align: center;
+            color: var(--success-color);
+        }
+        .no-vulnerabilities-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .no-vulnerabilities {
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+        .no-vuln-note {
+            color: #666;
+            margin-top: 0.5rem;
+        }
 
         /* Image Gallery Styles */
         .image-gallery {
