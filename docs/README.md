@@ -1,7 +1,7 @@
 # 🦊 Scrapii - Scraping Ético con Análisis de Ciberseguridad
 
 [![GitHub](https://img.shields.io/badge/GitHub-loiz1%2Fscrapii-blue?style=flat-square&logo=github)](https://github.com/loiz1/scrapii)
-[![Docker](https://img.shields.io/badge/Docker-✓-2496ED?style=flat-square&logo=docker)](https://hub.docker.com/r/loiz1/scrapii)
+[![Docker](https://img.shields.io/badge/Docker-✓-2496ED?style=flat-square&logo=docker)](https://hub.docker.com/r/loizzz/web-scrapi)
 [![TypeScript](https://img.shields.io/badge/TypeScript-4.2.2-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.2.0-61DAFB?style=flat-square&logo=react)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.2.0-646CFF?style=flat-square&logo=vite)](https://vitejs.dev/)
@@ -21,9 +21,9 @@
 - **Historial de consultas**: Almacenamiento local inteligente con historial optimizado
 
 #### 🛡️ Análisis de Ciberseguridad Avanzado
-- **Sistema de scoring inteligente**: Algoritmo de evaluación contextual realista v3.0
+- **Sistema de scoring inteligente**: Algoritmo de evaluación contextual realista
 - **Detección de vulnerabilidades**: Identificación de tecnologías vulnerables por versión
-- **Análisis de headers de seguridad**: CSP, HSTS, X-Frame-Options, y más
+- **Análisis de headers de seguridad**: CSP, HSTS y X-Frame-Options
 - **Evaluación SSL/TLS**: Validación de certificados y protocolos de seguridad
 - **Detección de credenciales hardcodeadas**: Patrones seguros sin falsos positivos
 - **Análisis de código JavaScript**: Identificación de vulnerabilidades comunes
@@ -35,13 +35,6 @@
 - **Análisis de imágenes**: Detección de contenido sin texto alternativo
 - **Evaluación de accesibilidad**: Puntos de acceso de usuario detectados
 
-#### 🎨 Interfaz Moderna y Responsiva
-- **Diseño en español**: Completamente localizado
-- **Interfaz responsive**: Adaptable a dispositivos móviles y escritorio
-- **Tabs organizadas**: Resumen, Seguridad, Tecnologías, E-commerce, Subdominios, Galería, JSON
-- **Visualización mejorada**: Indicadores de colores y métricas visuales
-- **Exportación JSON**: Descarga de resultados para análisis externos
-
 ---
 
 ## 🏗️ Stack Tecnológico
@@ -50,7 +43,7 @@
 - **React 19.2.0**: Biblioteca de interfaz de usuario moderna
 - **TypeScript**: Tipado estático para mayor robustez
 - **Vite 6.2.0**: Build tool ultrarrápido para desarrollo moderno
-- **ESLint 9.39.1**: Linter para calidad de código
+
 
 ### Backend/DevOps
 - **Node.js 18-alpine**: Runtime JavaScript eficiente
@@ -62,18 +55,11 @@
 - **Scanner de vulnerabilidades**: Detección avanzada de patrones de seguridad
 - **Headers de seguridad**: Configuración robusta de CSP y HSTS
 - **Validación de entrada**: Sanitización y validación de URLs
-
-### Herramientas de Desarrollo
-- **TypeScript ESLint**: Linting especializado para TypeScript
-- **React Hooks**: Gestión de estado moderna
-- **Local Storage**: Almacenamiento eficiente de historial
 - **CORS Proxy**: Manejo seguro de peticiones cross-origin
-
 ---
 
 
 ---
-
 ## 📦 Estructura del Proyecto
 
 ```
@@ -107,7 +93,6 @@ Scrapii/
 ├── 📄 vite.config.ts             # Configuración Vite
 ├── 📄 tsconfig.json              # Configuración TypeScript
 ├── 📄 eslint.config.js           # Configuración ESLint
-├── 📄 .env.example               # Variables de entorno ejemplo
 └── 📄 .gitignore                 # Exclusiones Git
 ```
 
@@ -170,26 +155,20 @@ docker search loizzz/web-scrapi
 
 
 ## Consumo de la Imagen Docker
-
+```bash
 ### Ejecutar desde Docker Hub
 
-```bash
+docker pull loizzz/web-scrapi:latest
+
 # Descargar y ejecutar la imagen más reciente
 docker run -d -p 80:80 --name web-scrapi loizzz/web-scrapi:latest
-
-# Con configuración personalizada
-docker run -d \
-  -p 8080:80 \
-  -e NODE_ENV=production \
-  --name scrapii-prod \
-  loiz1/scrapii:latest
 
 # Con volumen para persistencia
 docker run -d \
   -p 80:80 \
   -v scrapii-data:/app/data \
   --name scrapii-persistent \
-  loiz1/scrapii:latest
+  loizzz/web-scrapi:latest
 ```
 
 ---
@@ -209,7 +188,6 @@ docker run -d \
 - Exposición mínima de puertos
 - Sin herramientas de debugging en producción
 
-
 #### 3. **Scraping Ético**
 - Respeto automático a robots.txt
 - Validación de términos de servicio
@@ -225,35 +203,11 @@ docker run -d \
 #### ✨ Nuevas Funcionalidades
 - 🦊 Aplicación completa de scraping ético
 - 🛡️ Sistema de análisis de ciberseguridad avanzado
-- 🐳 Containerización completa con Docker
 - 📊 Dashboard de métricas y scoring
 - 🔒 Headers de seguridad implementados
 - 📱 Interfaz responsive y moderna
 
 ---
-
-
-### Problemas de Conectividad
-
-#### 🌐 Error CORS con el proxy
-```
-Access to fetch at 'https://corsproxy.io/?...' from origin 'http://localhost' has been blocked
-```
-
-**Solución**:
-- El archivo `index.html` ya incluye configuración CORS
-- Verificar que `https://corsproxy.io` esté accesible
-- Para desarrollo local, usar `npm run dev` en lugar de Docker
-
-#### 🌐 Error de conexión a sitios web
-```
-Error: Failed to fetch / Network Error
-```
-
-**Solución**:
-- Verificar que el sitio web esté accesible
-- Algunos sitios bloquean requests automatizados
-- Usar modo ético desactivado para pruebas: "Modo Ético OFF"
 
 
 ## 📞 Contacto y Soporte
