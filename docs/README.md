@@ -214,7 +214,7 @@ docker run -d \
 ---
 
 ### Docker Hub
-- **Imagen**: [loizzz/web-scrapi](https://hub.docker.com/r/loiz1/scrapii)
+- **Imagen**: [loizzz/web-scrapi](https://hub.docker.com/r/loizzz/web-scrapi)
 - **Tags**: `latest`, `v2.1.0`
 
 ---
