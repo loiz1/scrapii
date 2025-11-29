@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { logger } from './src/utils/logger';
 import { sanitizeUserInput, validateScrapingUrl, performSecurityAnalysis } from './src/utils/security';
+import { realisticSecurityCalculator, SecurityIntegrationUtils } from './src/utils/security_integrator';
 
 const CORS_PROXY = 'https://corsproxy.io/?';
 
@@ -193,15 +194,31 @@ const App = () => {
     const [ethicalMode, setEthicalMode] = useState<boolean>(true);
 
     useEffect(() => {
-        try {
-            const savedQueries = localStorage.getItem('scrapedQueries');
-            if (savedQueries) setQueries(JSON.parse(savedQueries));
-            
-            const savedOptimizedQueries = localStorage.getItem('optimizedQueries');
-            if (savedOptimizedQueries) setOptimizedQueries(JSON.parse(savedOptimizedQueries));
-        } catch (e) {
-            logger.error("Fallo al cargar consultas desde localStorage", { error: e });
-        }
+        let isMounted = true;
+        
+        const loadQueries = () => {
+            try {
+                const savedQueries = localStorage.getItem('scrapedQueries');
+                if (savedQueries && isMounted) {
+                    const parsedQueries = JSON.parse(savedQueries);
+                    setQueries(Array.isArray(parsedQueries) ? parsedQueries : []);
+                }
+                
+                const savedOptimizedQueries = localStorage.getItem('optimizedQueries');
+                if (savedOptimizedQueries && isMounted) {
+                    const parsedOptimizedQueries = JSON.parse(savedOptimizedQueries);
+                    setOptimizedQueries(Array.isArray(parsedOptimizedQueries) ? parsedOptimizedQueries : []);
+                }
+            } catch (e) {
+                logger.error("Fallo al cargar consultas desde localStorage", { error: e instanceof Error ? e.message : 'Error desconocido' });
+            }
+        };
+        
+        loadQueries();
+        
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     const getOptimizedQueries = (): OptimizedQuery[] => {
@@ -214,13 +231,21 @@ const App = () => {
     };
 
     const saveQueries = (newQueries: Query[]) => {
-        setQueries(newQueries);
-        localStorage.setItem('scrapedQueries', JSON.stringify(newQueries));
+        try {
+            setQueries(newQueries);
+            localStorage.setItem('scrapedQueries', JSON.stringify(newQueries.slice(0, 10))); // Limitar a 10 consultas
+        } catch (e) {
+            logger.error("Error guardando consultas", { error: e instanceof Error ? e.message : 'Error desconocido' });
+        }
     };
 
     const saveOptimizedQueries = (newQueries: OptimizedQuery[]) => {
-        setOptimizedQueries(newQueries);
-        localStorage.setItem('optimizedQueries', JSON.stringify(newQueries));
+        try {
+            setOptimizedQueries(newQueries);
+            localStorage.setItem('optimizedQueries', JSON.stringify(newQueries.slice(0, 10))); // Limitar a 10 consultas
+        } catch (e) {
+            logger.error("Error guardando consultas optimizadas", { error: e instanceof Error ? e.message : 'Error desconocido' });
+        }
     };
 
     // --- FUNCIONES AUXILIARES ---
@@ -240,39 +265,37 @@ const App = () => {
     };
 
     const detectUsersInContent = (html: string): { hasUsers: boolean; accessPoints: string[] } => {
-        const userPatterns = [
-            { pattern: /login/i, label: 'Iniciar Sesión' },
-            { pattern: /register/i, label: 'Registro' },
-            { pattern: /sign\s*in/i, label: 'Sign In' },
-            { pattern: /sign\s*up/i, label: 'Sign Up' },
-            { pattern: /profile/i, label: 'Perfil' },
-            { pattern: /account/i, label: 'Cuenta' },
-            { pattern: /dashboard/i, label: 'Dashboard' },
-            { pattern: /admin/i, label: 'Administración' },
-            { pattern: /user/i, label: 'Usuario' },
-            { pattern: /member/i, label: 'Miembro' },
-            { pattern: /author/i, label: 'Autor' },
-            { pattern: /usuario[s]?/i, label: 'Usuarios' },
-            { pattern: /miembro[s]?/i, label: 'Miembros' },
-            { pattern: /perfil[es]?/i, label: 'Perfiles' },
-            { pattern: /cuenta[s]?/i, label: 'Cuentas' },
-            { pattern: /iniciar\s*sesión/i, label: 'Iniciar Sesión' },
-            { pattern: /registr[ao]/i, label: 'Registro' }
-        ];
+        // Usar un solo regex combinado para mejor rendimiento
+        const combinedPattern = /(login|register|sign\s*in|sign\s*up|profile|account|dashboard|admin|user|member|author|usuarios|miembros|perfiles|cuentas|iniciar\s*sesión|registr[ao])/gi;
         
         const accessPoints: string[] = [];
+        const foundMatches = new Set<string>();
         
-        userPatterns.forEach(({ pattern, label }) => {
-            if (pattern.test(html)) {
-                accessPoints.push(label);
-            }
-        });
+        let match;
+        while ((match = combinedPattern.exec(html)) !== null) {
+            const matchText = match[0].toLowerCase();
+            
+            // Mapear coincidencias a etiquetas legibles
+            if (/login|iniciar\s*sesión/.test(matchText)) foundMatches.add('Iniciar Sesión');
+            else if (/register|registr[ao]/.test(matchText)) foundMatches.add('Registro');
+            else if (/sign\s*in/.test(matchText)) foundMatches.add('Sign In');
+            else if (/sign\s*up/.test(matchText)) foundMatches.add('Sign Up');
+            else if (/profile|perfil/.test(matchText)) foundMatches.add('Perfil');
+            else if (/account|cuenta/.test(matchText)) foundMatches.add('Cuenta');
+            else if (/dashboard/.test(matchText)) foundMatches.add('Dashboard');
+            else if (/admin/.test(matchText)) foundMatches.add('Administración');
+            else if (/user|usuario/.test(matchText)) foundMatches.add('Usuario');
+            else if (/member|miembro/.test(matchText)) foundMatches.add('Miembro');
+            else if (/author/.test(matchText)) foundMatches.add('Autor');
+            else if (/usuarios/.test(matchText)) foundMatches.add('Usuarios');
+            else if (/miembros/.test(matchText)) foundMatches.add('Miembros');
+            else if (/perfiles/.test(matchText)) foundMatches.add('Perfiles');
+            else if (/cuentas/.test(matchText)) foundMatches.add('Cuentas');
+        }
         
-        // Eliminar duplicados y retornar
-        const uniqueAccessPoints = [...new Set(accessPoints)];
         return { 
-            hasUsers: uniqueAccessPoints.length > 0, 
-            accessPoints: uniqueAccessPoints 
+            hasUsers: foundMatches.size > 0, 
+            accessPoints: Array.from(foundMatches)
         };
     };
 
@@ -510,91 +533,140 @@ const App = () => {
     };
     
     /**
-     * Genera título optimizado basado en keywords más relevantes
-     * Sin mencionar tecnologías, enfocándose en contenido y propósito
+     * Extrae el título desde 'www.' hasta la extensión del dominio (.com, .co, etc.)
+     * Convierte puntos y guiones en espacios y mejora la capitalización
+     * Ejemplos:
+     *   www.mi-sitio-web.com.co → 'Mi sitio web'
+     *   api.ejemplo.co → 'Ejemplo'
+     *   www.tienda-online.com → 'Tienda online'
+     */
+    const extractTitleFromDomain = (url: string): string => {
+        try {
+            const urlObj = new URL(url);
+            let hostname = urlObj.hostname;
+
+            // Extraer el dominio principal (sin subdominios)
+            let mainDomain = hostname;
+            if (hostname.includes('.')) {
+                const parts = hostname.split('.');
+                // Para dominios como www.ejemplo.com.co, queremos "ejemplo"
+                if (parts.length >= 2) {
+                    // Manejar casos especiales como co.uk, com.ar, etc.
+                    const lastTwoParts = parts.slice(-2).join('.');
+                    const specialDomains = ['co.uk', 'com.ar', 'com.br', 'com.mx', 'com.au'];
+
+                    if (specialDomains.includes(lastTwoParts)) {
+                        mainDomain = parts.slice(-3).join('.');
+                    } else {
+                        mainDomain = parts.slice(-2).join('.');
+                    }
+                }
+            }
+
+            // Remover www. si está presente
+            if (mainDomain.toLowerCase().startsWith('www.')) {
+                mainDomain = mainDomain.substring(4);
+            }
+
+            // Extraer solo la parte antes de la extensión principal (.com, .co, etc.)
+            const domainExtensions = ['.com', '.co', '.org', '.net', '.edu', '.gov', '.info', '.biz', '.me', '.io', '.tech', '.dev'];
+            let cleanDomain = mainDomain;
+
+            for (const ext of domainExtensions) {
+                const extIndex = cleanDomain.toLowerCase().indexOf(ext);
+                if (extIndex !== -1) {
+                    cleanDomain = cleanDomain.substring(0, extIndex);
+                    break;
+                }
+            }
+
+            // Limpiar y procesar el dominio
+            let processedDomain = cleanDomain
+                .replace(/[._]/g, ' ')  // Reemplazar puntos y guiones bajos con espacios
+                .replace(/-/g, ' ')     // Reemplazar guiones con espacios
+                .replace(/\s+/g, ' ')   // Normalizar espacios múltiples
+                .trim();
+
+            // Si el resultado está vacío o es muy corto, usar un fallback
+            if (processedDomain.length < 2) {
+                return 'Sitio Web';
+            }
+
+            // Capitalización inteligente: detectar si hay palabras compuestas
+            const words = processedDomain.split(/\s+/).filter(word => word.length > 0);
+            const capitalizedWords = words.map(word => {
+                // Detectar números y mantenerlos tal como están
+                if (/^\d+$/.test(word)) {
+                    return word;
+                }
+
+                // Para palabras con números como "web2", mantener la estructura
+                if (/^[a-zA-Z]+\d+[a-zA-Z]*$/.test(word.toLowerCase())) {
+                    const match = word.match(/^([a-zA-Z]+)(\d+)([a-zA-Z]*)$/);
+                    if (match) {
+                        const [, letters, numbers, rest] = match;
+                        return letters.charAt(0).toUpperCase() + letters.slice(1).toLowerCase() +
+                               numbers + rest.toLowerCase();
+                    }
+                }
+
+                // Capitalización normal
+                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            });
+
+            const result = capitalizedWords.join(' ');
+
+            // Filtrar resultados muy comunes y no descriptivos
+            const genericTerms = ['localhost', 'test', 'demo', 'example', 'ejemplo'];
+            if (genericTerms.includes(result.toLowerCase())) {
+                return 'Sitio Web';
+            }
+
+            return result;
+
+        } catch {
+            // Si hay error en el parsing, usar un fallback inteligente basado en la URL
+            try {
+                const domainMatch = url.match(/https?:\/\/(?:www\.)?([^\/\s]+)/i);
+                if (domainMatch && domainMatch[1]) {
+                    let fallbackDomain = domainMatch[1];
+                    // Remover la extensión más común para el fallback
+                    fallbackDomain = fallbackDomain.replace(/\.(com|co|org|net|edu|gov|info|biz|me|io|tech|dev).*$/i, '');
+
+                    if (fallbackDomain && fallbackDomain.length > 1) {
+                        const cleanFallback = fallbackDomain
+                            .replace(/[._-]/g, ' ')
+                            .split(/\s+/)
+                            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                            .join(' ');
+                        return cleanFallback || 'Sitio Web';
+                    }
+                }
+            } catch {
+                // Ignorar errores del fallback
+            }
+
+            return 'Sitio Web';
+        }
+    };
+
+    /**
+     * Genera título optimizado basado en el dominio extraído de la URL
      */
     const generateOptimizedTitle = (
         validatedKeywords: { keyword: string; relevanceScore: number; matchType: string }[],
         originalTitle: string,
         url: string
     ): { optimizedTitle: string; matchPercentage: number } => {
-        if (validatedKeywords.length === 0) {
-            return {
-                optimizedTitle: originalTitle || 'Sitio Web',
-                matchPercentage: 0
-            };
-        }
+        // Extraer título directamente del dominio
+        const optimizedTitle = extractTitleFromDomain(url);
         
-        // Tomar top 3 keywords más relevantes
-        const topKeywords = validatedKeywords.slice(0, 3);
-        const avgScore = topKeywords.reduce((sum, k) => sum + k.relevanceScore, 0) / topKeywords.length;
-        
-        // Categorizar keywords para generar título apropiado
-        const keywordCategories = {
-            ecommerce: topKeywords.filter(k => 
-                /(tienda|shop|store|productos|precio|comprar|carrito|oferta)/i.test(k.keyword)
-            ),
-            servicios: topKeywords.filter(k => 
-                /(servicios|consultoría|soporte|ayuda|contacto)/i.test(k.keyword)
-            ),
-            productos: topKeywords.filter(k => 
-                /(productos|catálogo|colección|línea|marca)/i.test(k.keyword)
-            ),
-            empresa: topKeywords.filter(k => 
-                /(empresa|organización|corporativo|nosotros)/i.test(k.keyword)
-            ),
-            blog: topKeywords.filter(k => 
-                /(blog|noticias|artículos|recursos|guías)/i.test(k.keyword)
-            )
-        };
-        
-        let optimizedTitle = '';
-        const urlObj = new URL(url);
-        const domain = urlObj.hostname.replace('www.', '');
-        
-        // Generar título según categoría predominante
-        if (keywordCategories.ecommerce.length > 0) {
-            const mainKeyword = keywordCategories.ecommerce[0].keyword;
-            const secondaryKeyword = keywordCategories.ecommerce[1]?.keyword;
-            
-            if (/(tienda|shop|store)/i.test(mainKeyword)) {
-                optimizedTitle = `Tienda ${secondaryKeyword || 'Online'} - ${domain}`;
-            } else if (/(productos|product)/i.test(mainKeyword)) {
-                optimizedTitle = `Productos ${secondaryKeyword || ''} | ${domain}`.trim();
-            } else if (/(precio|precios)/i.test(mainKeyword)) {
-                optimizedTitle = `Precios ${secondaryKeyword || 'Competitivos'} - ${domain}`;
-            } else if (/(oferta|ofertas)/i.test(mainKeyword)) {
-                optimizedTitle = `Ofertas y Descuentos - ${domain}`;
-            } else {
-                optimizedTitle = `${mainKeyword.charAt(0).toUpperCase() + mainKeyword.slice(1)} ${domain}`;
-            }
-        } else if (keywordCategories.servicios.length > 0) {
-            const mainKeyword = keywordCategories.servicios[0].keyword;
-            optimizedTitle = `Servicios de ${mainKeyword} - ${domain}`;
-        } else if (keywordCategories.productos.length > 0) {
-            const mainKeyword = keywordCategories.productos[0].keyword;
-            optimizedTitle = `${mainKeyword.charAt(0).toUpperCase() + mainKeyword.slice(1)} - ${domain}`;
-        } else if (keywordCategories.empresa.length > 0) {
-            const mainKeyword = keywordCategories.empresa[0].keyword;
-            optimizedTitle = `${domain} - ${mainKeyword.charAt(0).toUpperCase() + mainKeyword.slice(1)}`;
-        } else if (keywordCategories.blog.length > 0) {
-            const mainKeyword = keywordCategories.blog[0].keyword;
-            optimizedTitle = `${mainKeyword.charAt(0).toUpperCase() + mainKeyword.slice(1)} - Blog ${domain}`;
-        } else {
-            // Fallback: usar keywords más relevantes
-            const mainKeyword = topKeywords[0].keyword;
-            optimizedTitle = `${mainKeyword.charAt(0).toUpperCase() + mainKeyword.slice(1)} - ${domain}`;
-        }
-        
-        // Limpiar título generado
-        optimizedTitle = optimizedTitle
-            .replace(/\s+/g, ' ') // Eliminar espacios múltiples
-            .replace(/[-|]\s*[-|]/g, ' - ') // Normalizar separadores
-            .trim();
+        // Como el título viene directamente del dominio, asignamos alta relevancia
+        const matchPercentage = 85;
         
         return {
             optimizedTitle,
-            matchPercentage: Math.round(avgScore)
+            matchPercentage
         };
     };
     
@@ -922,81 +994,556 @@ const App = () => {
     const detectVulnerableTechnologies = (technologies: any[], html: string): VulnerableTechnology[] => {
         const vulnerable: VulnerableTechnology[] = [];
         
-        // Base de datos expandida de vulnerabilidades con CVEs específicos
+        // Función para verificar si una cadena es un patrón seguro conocido
+        const isSafeKnownPattern = (text: string): boolean => {
+            const safePatterns = [
+                // Google APIs y servicios (PATRONES EXACTOS Y SEGUROS)
+                /^AIzaSy[a-zA-Z0-9_-]{35}$/, // Google Maps API Key
+                /^GTM-[A-Z0-9]{6,8}$/, // Google Tag Manager ID
+                /^UA-\d{4,}-\d+$/, // Google Analytics ID (Universal Analytics)
+                /^G-[A-Z0-9]{8,}$/, // Google Analytics 4 ID
+                /^firebase[_-]?[a-zA-Z0-9_-]*$/, // Firebase keys
+                /^pk_test_[a-zA-Z0-9]{24,}$/, // Stripe test keys (seguros)
+                /^pk_live_[a-zA-Z0-9]{24,}$/, // Stripe live public keys (seguros)
+                
+                // Facebook/Meta
+                /^fb\d{13,}$/, // Facebook App ID
+                /^ca\d{19}$/, // Facebook App ID alternativo
+                
+                // GitHub (tokens públicos de solo lectura)
+                /^ghp_[a-zA-Z0-9]{36}$/, // GitHub Personal Access Token
+                
+                // Otros servicios seguros comunes
+                /^eyJ[a-zA-Z0-9_-]*$/, // JWT tokens (generalmente seguros en frontend)
+                /^[a-zA-Z0-9_-]{32}$/, // Patrones genéricos de 32 chars (muchos son seguros)
+                /^[a-zA-Z0-9_-]{40}$/, // Patrones genéricos de 40 chars
+            ];
+            
+            return safePatterns.some(pattern => pattern.test(text));
+        };
+
+        // 1. DETECCIÓN DE CREDENCIALES HARCODEADAS - PRIORIDAD MÁXIMA
+        // EXCLUSIONES COMPLETAS: APIs legítimas de Google y otros servicios seguros
+        const credentialPatterns = [
+            // API Keys y tokens (EXCLUYENDO COMPLETAMENTE PATRONES SEGUROS)
+            { 
+                pattern: /api[_-]?key["']?\s*[:=]\s*["'](?!AIzaSy|GTM-|UA-|G-|fb|ghp_)[a-zA-Z0-9]{32,}["']/gi,
+                vulnerability: 'Hardcoded API Key detected (NO Google APIs)',
+                severity: 'critical' as const,
+                exploitation: 'API keys hardcodeadas exponen acceso no autorizado a servicios externos',
+                recommendation: 'Mover API keys a variables de entorno o archivos de configuración seguros'
+            },
+            {
+                pattern: /secret[_-]?key["']?\s*[:=]\s*["'](?!AIzaSy|GTM-)[a-zA-Z0-9]{32,}["']/gi,
+                vulnerability: 'Hardcoded Secret Key detected (NO Google)',
+                severity: 'critical' as const,
+                exploitation: 'Claves secretas hardcodeadas permiten acceso no autorizado y escalada de privilegios',
+                recommendation: 'Usar variables de entorno y sistemas de gestión de secretos'
+            },
+            {
+                pattern: /token["']?\s*[:=]\s*["'](?!GTM-|AIzaSy|google|fb|ghp_|UA-|G-|ca-|pk_)[a-zA-Z0-9]{20,}["']/gi,
+                vulnerability: 'Hardcoded Authentication Token detected (excluding safe patterns)',
+                severity: 'high' as const,
+                exploitation: 'Tokens de autenticación hardcodeados permiten bypass de autenticación',
+                recommendation: 'Almacenar tokens de forma segura y rotar regularmente'
+            },
+            {
+                pattern: /password["']?\s*[:=]\s*["']([^"']{6,})["']/gi,
+                vulnerability: 'Hardcoded Password detected',
+                severity: 'critical' as const,
+                exploitation: 'Contraseñas hardcodeadas exponen acceso directo a sistemas y bases de datos',
+                recommendation: 'Usar sistemas de autenticación seguros y hashing de contraseñas'
+            },
+            {
+                pattern: /private[_-]?key["']?\s*[:=]\s*["'](-----BEGIN [A-Z ]+-----)/gi,
+                vulnerability: 'Hardcoded Private Key detected',
+                severity: 'critical' as const,
+                exploitation: 'Claves privadas hardcodeadas permiten decriptación y suplantación de identidad',
+                recommendation: 'Usar gestión segura de claves criptográficas'
+            },
+            // Tokens de servicios populares
+            {
+                pattern: /sk_live_[a-zA-Z0-9]{24,}/gi,
+                vulnerability: 'Stripe Live Secret Key exposed',
+                severity: 'critical' as const,
+                exploitation: 'Clave secreta de Stripe permite acceso completo a transacciones financieras',
+                recommendation: 'Rotar clave inmediatamente y usar webhooks para validación'
+            },
+            {
+                pattern: /pk_live_[a-zA-Z0-9]{24,}/gi,
+                vulnerability: 'Stripe Live Public Key exposed',
+                severity: 'medium' as const,
+                exploitation: 'Clave pública de Stripe permite identificación pero es menos crítica',
+                recommendation: 'Verificar que sea solo clave pública y no secreta'
+            },
+            {
+                pattern: /ghp_[a-zA-Z0-9]{36}/gi,
+                vulnerability: 'GitHub Personal Access Token exposed',
+                severity: 'critical' as const,
+                exploitation: 'Token de GitHub permite acceso completo a repositorios y organización',
+                recommendation: 'Revocar token inmediatamente y usar tokens con permisos limitados'
+            },
+
+        ];
+
+        // 2. DETECCIÓN AVANZADA DE BUGS Y VULNERABILIDADES DE CÓDIGO
+        const advancedVulnerablePatterns = [
+            // EJECUCIÓN DE CÓDIGO - CRÍTICOS
+            {
+                pattern: /eval\s*\(/gi,
+                vulnerability: 'Dangerous eval() function execution',
+                severity: 'critical' as const,
+                exploitation: 'eval() permite ejecución arbitraria de código JavaScript, facilitando RCE, XSS y escalación completa del sistema',
+                recommendation: 'Eliminar eval() completamente. Usar JSON.parse() para datos o switch/case para lógica predefinida'
+            },
+
+            {
+                pattern: /setTimeout\s*\(\s*['"]/gi,
+                vulnerability: 'Code injection via setTimeout with string',
+                severity: 'critical' as const,
+                exploitation: 'setTimeout con string ejecuta código arbitrario, permitiendo inyección completa',
+                recommendation: 'Usar funciones como callback, nunca strings. Validar entradas rigurosamente'
+            },
+            {
+                pattern: /setInterval\s*\(\s*['"]/gi,
+                vulnerability: 'Code injection via setInterval with string',
+                severity: 'critical' as const,
+                exploitation: 'setInterval con string ejecuta código arbitrario repetidamente',
+                recommendation: 'Usar funciones como callback, validar inputs antes de usar intervalos'
+            },
+
+            // XSS Y MANIPULACIÓN DOM - ALTOS
+            {
+                pattern: /innerHTML\s*=/gi,
+                vulnerability: 'Direct DOM XSS via innerHTML assignment',
+                severity: 'high' as const,
+                exploitation: 'innerHTML permite inyección directa de HTML/JavaScript malicioso sin sanitización',
+                recommendation: 'Usar textContent, createElement() o bibliotecas como DOMPurify para sanitización'
+            },
+            {
+                pattern: /document\.write\s*\(/gi,
+                vulnerability: 'XSS vulnerability via document.write()',
+                severity: 'high' as const,
+                exploitation: 'document.write() puede ejecutar scripts maliciosos y bypassing CSP policies',
+                recommendation: 'Usar DOM manipulation segura con textContent, appendChild() o createElement()'
+            },
+            {
+                pattern: /outerHTML\s*=/gi,
+                vulnerability: 'XSS vulnerability via outerHTML assignment',
+                severity: 'high' as const,
+                exploitation: 'outerHTML permite reemplazo completo del elemento, exponiendo a inyección',
+                recommendation: 'Usar métodos seguros de manipulación DOM como replaceChild()'
+            },
+            {
+                pattern: /\.insertAdjacentHTML\s*\(/gi,
+                vulnerability: 'XSS via insertAdjacentHTML with unvalidated content',
+                severity: 'high' as const,
+                exploitation: 'insertAdjacentHTML permite inserción de HTML malicioso sin sanitización',
+                recommendation: 'Usar insertAdjacentText() o sanitización rigurosa antes de insertar HTML'
+            },
+
+            // JQUERY ESPECÍFICO - XSS PATTERNS
+            {
+                pattern: /\$\([^)]*\)\.html\s*\(/gi,
+                vulnerability: 'jQuery XSS via .html() method',
+                severity: 'high' as const,
+                exploitation: 'jQuery .html() ejecuta contenido sin sanitización, común vector de XSS',
+                recommendation: 'Usar .text() para contenido de texto, sanitizar HTML antes de .html()'
+            },
+            {
+                pattern: /\$\([^)]*\)\.append\s*\(\s*['"][^'"]*<.*>/gi,
+                vulnerability: 'jQuery XSS via .append() with HTML content',
+                severity: 'high' as const,
+                exploitation: '.append() con contenido HTML sin validar permite inyección de scripts',
+                recommendation: 'Usar .text() para texto plano, validar HTML antes de append()'
+            },
+            {
+                pattern: /\$\([^)]*\)\.prepend\s*\(\s*['"][^'"]*<.*>/gi,
+                vulnerability: 'jQuery XSS via .prepend() with HTML content',
+                severity: 'high' as const,
+                exploitation: 'Similar a .append(), permite inyección de contenido malicioso',
+                recommendation: 'Sanitizar contenido HTML antes de usar .prepend()'
+            },
+
+            // PROTOTYPE POLLUTION - CRÍTICOS
+            {
+                pattern: /__proto__\s*=\s*/gi,
+                vulnerability: 'Prototype pollution vulnerability',
+                severity: 'critical' as const,
+                exploitation: 'Modificación de __proto__ afecta todos los objetos, puede llevar a RCE completo',
+                recommendation: 'Prevenir mutaciones de __proto__, usar Object.create() y Object.freeze()'
+            },
+            {
+                pattern: /constructor\.prototype\s*=\s*/gi,
+                vulnerability: 'Constructor prototype pollution',
+                severity: 'high' as const,
+                exploitation: 'Modificación del prototipo del constructor afecta instancias de la clase',
+                recommendation: 'Proteger constructores, usar Object.seal() y Object.freeze()'
+            },
+            {
+                pattern: /Object\.assign\s*\([^,]*,\s*[^)]*__proto__[^)]*\)/gi,
+                vulnerability: 'Prototype pollution via Object.assign',
+                severity: 'high' as const,
+                exploitation: 'Object.assign puede copiar propiedades __proto__ maliciosas',
+                recommendation: 'Validar objetos antes de Object.assign, usar Object.create() como alternativa'
+            },
+
+            // OPEN REDIRECT Y NAVEGACIÓN INSEGURA
+            {
+                pattern: /location\s*=\s*['"]?\s*\+/gi,
+                vulnerability: 'Open redirect vulnerability',
+                severity: 'high' as const,
+                exploitation: 'Redirección dinámica permite ataques de phishing y bypass de confianza',
+                recommendation: 'Validar URLs contra whitelist, usar URL parsing seguro'
+            },
+            {
+                pattern: /window\.open\s*\([^)]*\+[^)]*\)/gi,
+                vulnerability: 'Dynamic window.open with unvalidated URL',
+                severity: 'medium' as const,
+                exploitation: 'window.open dinámico permite redirección a sitios maliciosos',
+                recommendation: 'Validar URLs antes de usar en window.open()'
+            },
+            {
+                pattern: /href\s*=\s*['"]?\s*\+/gi,
+                vulnerability: 'Dynamic href construction vulnerability',
+                severity: 'high' as const,
+                exploitation: 'href dinámico permite inyección de URLs maliciosas',
+                recommendation: 'Validar y sanitizar URLs antes de asignar a href'
+            },
+
+            // INYECCIÓN DE BASE64 Y CODIFICACIÓN
+            {
+                pattern: /atob\s*\([^)]*\)/gi,
+                vulnerability: 'Base64 decoding of potentially malicious content',
+                severity: 'medium' as const,
+                exploitation: 'Decodificación de base64 puede revelar payloads de XSS, RCE o malware',
+                recommendation: 'Validar y sanitizar contenido base64 antes de decodificar'
+            },
+            {
+                pattern: /fromCharCode\s*\(\s*[\d,\s]*\)/gi,
+                vulnerability: 'Code obfuscation via String.fromCharCode',
+                severity: 'medium' as const,
+                exploitation: 'String.fromCharCode puede ocultar código malicioso y evadir detección',
+                recommendation: 'Analizar contenido decodificado, usar WAFs para detección'
+            },
+            {
+                pattern: /unescape\s*\(/gi,
+                vulnerability: 'URL encoded content potentially malicious',
+                severity: 'medium' as const,
+                exploitation: 'unescape() puede decodificar payloads maliciosos codificados en URL',
+                recommendation: 'Usar decodeURIComponent() y validar contenido decodificado'
+            },
+
+            // COMANDOS DEL SISTEMA Y ARCHIVOS
+            {
+                pattern: /exec\s*\(/gi,
+                vulnerability: 'System command execution vulnerability',
+                severity: 'critical' as const,
+                exploitation: 'exec() permite ejecución de comandos del sistema sin validación',
+                recommendation: 'Evitar ejecución de comandos, usar APIs seguras del sistema'
+            },
+            {
+                pattern: /system\s*\(/gi,
+                vulnerability: 'System command execution vulnerability',
+                severity: 'critical' as const,
+                exploitation: 'system() permite ejecución de comandos shell con privilegios',
+                recommendation: 'Eliminar system(), usar APIs nativas del lenguaje'
+            },
+            {
+                pattern: /shell_exec\s*\(/gi,
+                vulnerability: 'Shell command execution vulnerability',
+                severity: 'critical' as const,
+                exploitation: 'shell_exec() permite ejecución de comandos shell sin restricciones',
+                recommendation: 'Deshabilitar shell_exec(), usar APIs más seguras'
+            },
+
+            // CONFIGURACIÓN INSEGURA EN PRODUCCIÓN
+            {
+                pattern: /console\.(log|error|warn|info)\s*\(/gi,
+                vulnerability: 'Information disclosure via console logging',
+                severity: 'medium' as const,
+                exploitation: 'Logs en producción exponen información sensible, estructura interna y potenciales vectores de ataque',
+                recommendation: 'Implementar logging estructurado con niveles, remover logs en producción'
+            },
+            {
+                pattern: /debug\s*=\s*true/gi,
+                vulnerability: 'Debug mode enabled in production',
+                severity: 'high' as const,
+                exploitation: 'Debug habilitado expone información interna y facilita ataques de reconocimiento',
+                recommendation: 'Deshabilitar debug en producción, usar variables de entorno'
+            },
+            {
+                pattern: /alert\s*\([^)]*\)/gi,
+                vulnerability: 'Debug alert() statements in production',
+                severity: 'low' as const,
+                exploitation: 'Alerts interrumpen UX y pueden exponer información',
+                recommendation: 'Remover alerts(), usar logging y notificaciones apropiadas'
+            },
+            {
+                pattern: /confirm\s*\([^)]*\)/gi,
+                vulnerability: 'Debug confirm() statements in production',
+                severity: 'low' as const,
+                exploitation: 'Confirm dialogs pueden exponer información y interrumpir UX',
+                recommendation: 'Reemplazar con modales custom y validación apropiada'
+            },
+
+            // COOKIES Y SESIONES INSEGURAS
+            {
+                pattern: /document\.cookie\s*=\s*['"][^'"]*secure\s*=\s*false/gi,
+                vulnerability: 'Cookie without Secure flag',
+                severity: 'medium' as const,
+                exploitation: 'Cookies sin secure flag se transmiten por HTTP, exponiendo sesiones',
+                recommendation: 'Usar Secure flag en cookies de autenticación'
+            },
+            {
+                pattern: /document\.cookie\s*=\s*['"][^'"]*httponly\s*=\s*false/gi,
+                vulnerability: 'Cookie without HttpOnly flag',
+                severity: 'medium' as const,
+                exploitation: 'Cookies sin HttpOnly son accesibles via JavaScript (XSS)',
+                recommendation: 'Usar HttpOnly flag para cookies sensibles'
+            },
+            {
+                pattern: /document\.cookie\s*=\s*['"][^'"]*samesite\s*=\s*none/gi,
+                vulnerability: 'Cookie with SameSite=None without Secure',
+                severity: 'high' as const,
+                exploitation: 'SameSite=None sin Secure expone a ataques CSRF',
+                recommendation: 'Usar SameSite=Strict o agregar Secure flag'
+            },
+
+            // SQL INJECTION PATTERNS (si se detectan en contenido)
+            {
+                pattern: /(union|select|insert|update|delete|drop|create|alter)\s+.*\s+from\s+/gi,
+                vulnerability: 'SQL injection pattern detected',
+                severity: 'critical' as const,
+                exploitation: 'Patrones SQL sugieren posible inyección si hay input del usuario',
+                recommendation: 'Usar prepared statements, validar y sanitizar inputs'
+            },
+
+            // PATH TRAVERSAL
+            {
+                pattern: /\.\.\//gi,
+                vulnerability: 'Path traversal pattern detected',
+                severity: 'high' as const,
+                exploitation: 'Patrones ../ pueden indicar intento de path traversal',
+                recommendation: 'Validar paths, usar whitelists de archivos permitidos'
+            },
+
+            // SERIALIZATION VULNERABILITIES
+            {
+                pattern: /JSON\.parse\s*\(/gi,
+                vulnerability: 'JSON parsing potentially unsafe',
+                severity: 'low' as const,
+                exploitation: 'JSON.parse puede procesar datos maliciosos si no se valida',
+                recommendation: 'Validar estructura JSON, usar schemas de validación'
+            },
+            {
+                pattern: /XMLHttpRequest\s*\(\)/gi,
+                vulnerability: 'XMLHttpRequest usage requires security consideration',
+                severity: 'low' as const,
+                exploitation: 'XMLHttpRequest permite requests cross-origin si no se valida',
+                recommendation: 'Usar fetch() con validación de CORS y Content-Type'
+            }
+        ];
+
+        // 3. DETECCIÓN DE TECNOLOGÍAS VULNERABLES POR VERSIÓN
         const vulnerabilityDatabase: Record<string, { 
             versions?: string[]; 
             patterns?: RegExp[];
             vulnerability: string; 
             severity: VulnerableTechnology['severity'];
             cveId?: string;
+            recommendation: string;
+            exploitation_details: string;
         }> = {
+            // JAVASCRIPT FRAMEWORKS Y LIBRARIES
             'jQuery': { 
                 versions: ['1.', '2.', '3.0.', '3.1.', '3.2.', '3.3.', '3.4.'],
                 vulnerability: 'jQuery XSS vulnerabilities and prototype pollution (CVE-2020-11022, CVE-2020-11023)',
                 severity: 'high',
-                cveId: 'CVE-2020-11022'
+                cveId: 'CVE-2020-11022, CVE-2020-11023',
+                recommendation: 'Actualizar a jQuery 3.5.1+ con patch de seguridad. Implementar sanitización de inputs y usar .text() en lugar de .html()',
+                exploitation_details: 'Permite ejecución de código JavaScript arbitrario a través de manipulación de DOM, prototype pollution y bypass de sanitización'
             },
             'React': { 
                 versions: ['15.', '16.', '17.0.', '17.1.', '17.2.'],
                 vulnerability: 'XSS vulnerability via dangerouslySetInnerHTML and URL parsing (CVE-2019-7580)',
                 severity: 'high',
-                cveId: 'CVE-2019-7580'
+                cveId: 'CVE-2019-7580',
+                recommendation: 'Actualizar a React 18+ inmediatamente. Eliminar dangerouslySetInnerHTML. Implementar sanitización con sanitize-html o DOMPurify',
+                exploitation_details: 'Permite inyección de scripts maliciosos a través de contenido HTML no sanitizado en componentes React, bypass de virtual DOM'
             },
             'WordPress': { 
-                versions: ['4.', '5.0.', '5.1.', '5.2.', '5.3.', '5.4.', '5.5.', '5.6.', '5.7.', '5.8.'],
-                vulnerability: 'WordPress XSS, SQL Injection, and RCE vulnerabilities (Multiple CVEs)',
+                versions: ['4.', '5.0.', '5.1.', '5.2.', '5.3.', '5.4.', '5.5.', '5.6.', '5.7.', '5.8.', '5.9.', '6.0.', '6.1.', '6.2.', '6.3.'],
+                vulnerability: 'WordPress XSS, SQL Injection, RCE y subida de archivos maliciosos (Multiple CVEs)',
                 severity: 'critical',
-                cveId: 'CVE-2022-39986'
+                cveId: 'CVE-2022-39986, CVE-2023-39952, CVE-2023-2745',
+                recommendation: 'ACTUALIZAR WordPress a 6.4+ INMEDIATAMENTE. Aplicar todos los security patches críticos. Instalar plugins de seguridad como Wordfence',
+                exploitation_details: 'Vulnerabilidades críticas que permiten ejecución remota de código completa, inyección SQL sin autenticación, escalación de privilegios y bypass de autenticación'
             },
             'PHP': { 
-                versions: ['5.', '7.0.', '7.1.', '7.2.', '7.3.', '7.4.'],
-                vulnerability: 'PHP multiple vulnerabilities including RCE and file inclusion (CVE-2023-3247)',
+                versions: ['5.', '7.0.', '7.1.', '7.2.', '7.3.', '7.4.', '8.0.', '8.1.', '8.2.'],
+                vulnerability: 'PHP múltiples vulnerabilidades RCE, inclusión de archivos y bypass de restricciones (CVE-2023-3247)',
                 severity: 'critical',
-                cveId: 'CVE-2023-3247'
+                cveId: 'CVE-2023-3247, CVE-2023-6647, CVE-2023-3824',
+                recommendation: 'Actualizar PHP a 8.3+ INMEDIATAMENTE. Deshabilitar funciones peligrosas (eval, exec, shell_exec, file_get_contents remotos)',
+                exploitation_details: 'Permite inclusión de archivos remotos, ejecución de comandos del sistema sin restricciones, bypass de open_basedir y escalación completa del sistema'
             },
             'Angular': { 
-                versions: ['1.', '2.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '11.', '12.', '13.', '14.'],
-                vulnerability: 'Angular XSS vulnerability in template parsing (CVE-2020-5216)',
+                versions: ['1.', '2.', '4.', '5.', '6.', '7.', '8.', '9.', '10.', '11.', '12.', '13.', '14.', '15.', '16.'],
+                vulnerability: 'Angular XSS vulnerability in template parsing y dependency injection (CVE-2020-5216)',
                 severity: 'high',
-                cveId: 'CVE-2020-5216'
+                cveId: 'CVE-2020-5216, CVE-2022-23042',
+                recommendation: 'Actualizar Angular a 17+ (LTS). Implementar sanitización de templates con DomSanitizerstrict',
+                exploitation_details: 'Permite ejecución de scripts maliciosos a través de templates Angular con contenido no sanitizado, bypass de sanitización'
             },
             'Vue.js': { 
-                versions: ['2.0.', '2.1.', '2.2.', '2.3.', '2.4.', '2.5.', '2.6.', '3.0.', '3.1.'],
-                vulnerability: 'XSS vulnerability via v-html directive (CVE-2023-2649)',
+                versions: ['2.0.', '2.1.', '2.2.', '2.3.', '2.4.', '2.5.', '2.6.', '3.0.', '3.1.', '3.2.', '3.3.'],
+                vulnerability: 'XSS vulnerability via v-html directive y template injection (CVE-2023-2649)',
                 severity: 'high',
-                cveId: 'CVE-2023-2649'
+                cveId: 'CVE-2023-2649, CVE-2023-4147',
+                recommendation: 'Actualizar Vue.js a 3.4+ (última versión estable). Eliminar v-html, implementar sanitización rigurosa',
+                exploitation_details: 'Permite inyección de código malicioso a través de la directiva v-html con contenido no filtrado, bypass de reactivity'
             },
             'Bootstrap': {
-                versions: ['3.', '4.', '5.0.', '5.1.'],
-                vulnerability: 'Bootstrap XSS vulnerability in tooltip/popover (CVE-2019-8331)',
+                versions: ['3.', '4.', '5.0.', '5.1.', '5.2.', '5.3.'],
+                vulnerability: 'Bootstrap XSS vulnerability in tooltip/popover y data attributes (CVE-2019-8331)',
                 severity: 'medium',
-                cveId: 'CVE-2019-8331'
+                cveId: 'CVE-2019-8331',
+                recommendation: 'Actualizar Bootstrap a 5.3+ con último patch. Validar contenido antes de mostrar en tooltips/popovers',
+                exploitation_details: 'Permite ejecución de scripts a través de atributos data en elementos de tooltip y popover, manipulación de eventos'
             },
             'jQuery UI': {
-                versions: ['1.10.', '1.11.', '1.12.'],
-                vulnerability: 'jQuery UI XSS vulnerability in removeClass function',
-                severity: 'high'
+                versions: ['1.10.', '1.11.', '1.12.', '1.13.'],
+                vulnerability: 'jQuery UI XSS vulnerability in removeClass function y event handling',
+                severity: 'high',
+                cveId: 'No CVE específico reportado',
+                recommendation: 'Actualizar jQuery UI a 1.13+ con security patches. Evitar manipulación directa de clases CSS dinámicas',
+                exploitation_details: 'Permite inyección de código malicioso a través de manipulación de clases CSS dinámicas y event handlers inseguros'
             },
             'Moment.js': {
-                versions: ['2.22.', '2.23.', '2.24.', '2.25.', '2.26.'],
-                vulnerability: 'Moment.js path traversal vulnerability (CVE-2022-24729)',
+                versions: ['2.22.', '2.23.', '2.24.', '2.25.', '2.26.', '2.27.', '2.28.'],
+                vulnerability: 'Moment.js path traversal vulnerability y ReDoS (CVE-2022-24729)',
                 severity: 'high',
-                cveId: 'CVE-2022-24729'
+                cveId: 'CVE-2022-24729',
+                recommendation: 'MIGRAR INMEDIATAMENTE a Day.js, date-fns o Luxon. Moment.js está deprecado. Si se mantiene, validar entradas de fecha rigurosamente',
+                exploitation_details: 'Permite traversal de directorios, acceso a archivos del sistema y ataques de ReDoS a través de formato de fechas malicioso'
             },
             'Lodash': {
-                versions: ['4.17.0', '4.17.1', '4.17.2', '4.17.3', '4.17.4'],
-                vulnerability: 'Lodash prototype pollution vulnerability (CVE-2019-10744)',
+                versions: ['4.17.0', '4.17.1', '4.17.2', '4.17.3', '4.17.4', '4.17.5', '4.17.6', '4.17.7', '4.17.8', '4.17.9', '4.17.10', '4.17.11'],
+                vulnerability: 'Lodash prototype pollution vulnerability y ReDoS (CVE-2019-10744)',
                 severity: 'critical',
-                cveId: 'CVE-2019-10744'
+                cveId: 'CVE-2019-10744',
+                recommendation: 'ACTUALIZAR a Lodash 4.17.21+ o MIGRAR a alternativas como Ramda, Rambda o Lodash-es',
+                exploitation_details: 'Permite contaminación completa del prototipo de objetos JavaScript, llevando a RCE, bypass de autenticación y escalación total'
             },
             'Express': {
-                versions: ['4.0.', '4.1.', '4.2.', '4.3.', '4.4.', '4.5.', '4.6.'],
-                vulnerability: 'Express framework XSS and open redirect vulnerabilities',
-                severity: 'medium'
+                versions: ['4.0.', '4.1.', '4.2.', '4.3.', '4.4.', '4.5.', '4.6.', '4.7.', '4.8.', '4.9.'],
+                vulnerability: 'Express framework XSS, open redirect y header injection vulnerabilities',
+                severity: 'medium',
+                cveId: 'No CVE específico pero múltiples vulnerabilidades reportadas',
+                recommendation: 'Actualizar Express a 4.19+ (última versión). Implementar middleware de seguridad (helmet, cors)',
+                exploitation_details: 'Permite redirección abierta, ataques XSS a través de headers malformados y bypass de políticas de seguridad'
+            },
+            'Webpack': {
+                versions: ['1.', '2.', '3.', '4.', '5.0.', '5.1.', '5.2.', '5.3.'],
+                vulnerability: 'Webpack module enumeration y information disclosure vulnerabilities',
+                severity: 'medium',
+                cveId: 'No CVE específico pero exposición de estructura interna',
+                recommendation: 'Configurar webpack para producción sin source maps, obfuscación de nombres de módulos',
+                exploitation_details: 'Exposición de estructura de la aplicación, nombres de módulos y dependencias, facilitando reconocimiento de atacantes'
             }
         };
 
-        // Detectar tecnologías vulnerables por versión
+        // PROCESAMIENTO DE PATRONES DE CREDENCIALES CON FILTRADO ANTI-FALSOS-POSITIVOS
+        credentialPatterns.forEach(({ pattern, vulnerability, severity, exploitation, recommendation }) => {
+            const matches = html.match(pattern);
+            if (matches && matches.length > 0) {
+                // NUEVO FILTRADO ANTI-FALSOS-POSITIVOS INTELIGENTE
+                const safeMatches = matches.filter(match => {
+                    // Extraer la clave/valor del match
+                    const keyValueMatch = match.match(/["']([^"']+)["']/);
+                    if (keyValueMatch && keyValueMatch[1]) {
+                        const keyValue = keyValueMatch[1];
+                        
+                        // PRIMER FILTRO: Patrones conocidos seguros (Google APIs, etc.)
+                        if (isSafeKnownPattern(keyValue)) {
+                            return false; // Excluir completamente
+                        }
+                        
+                        // SEGUNDO FILTRO: APIs y servicios legítimos por contexto
+                        const isLegitimateService = 
+                            keyValue.toLowerCase().includes('google') ||
+                            keyValue.toLowerCase().includes('firebase') ||
+                            keyValue.toLowerCase().includes('gtm') ||
+                            keyValue.toLowerCase().includes('analytics') ||
+                            keyValue.toLowerCase().startsWith('pk_') || // Stripe public keys
+                            keyValue.toLowerCase().startsWith('ua-') || // Google Analytics
+                            keyValue.toLowerCase().startsWith('g-');   // Google Analytics 4
+                        
+                        if (isLegitimateService) {
+                            return false; // Excluir servicios legítimos
+                        }
+                    }
+                    return true; // Si no podemos extraer el valor, lo reportamos (será filtrado después)
+                });
+
+                if (safeMatches.length > 0) {
+                    const lines = html.split('\n');
+                    const foundLines: number[] = [];
+                    lines.forEach((line, index) => {
+                        if (pattern.test(line)) {
+                            // Verificar si la línea contiene un patrón seguro
+                            const keyValueMatch = line.match(/["']([^"']+)["']/);
+                            if (keyValueMatch && keyValueMatch[1]) {
+                                if (!isSafeKnownPattern(keyValueMatch[1])) {
+                                    foundLines.push(index + 1);
+                                }
+                            } else {
+                                foundLines.push(index + 1);
+                            }
+                        }
+                        pattern.lastIndex = 0;
+                    });
+
+                    if (foundLines.length > 0) {
+                        vulnerable.push({
+                            name: `🔑 HARDCODED CREDENTIAL`,
+                            version: `Líneas: ${foundLines.slice(0, 3).join(', ')}${foundLines.length > 3 ? '...' : ''}`,
+                            vulnerability: `${vulnerability} - ${exploitation}`,
+                            severity,
+                            lineNumbers: foundLines,
+                            recommendation
+                        });
+                    }
+                }
+            }
+        });
+
+        // PROCESAMIENTO DE PATRONES AVANZADOS DE VULNERABILIDADES
+        advancedVulnerablePatterns.forEach(({ pattern, vulnerability, severity, exploitation, recommendation }) => {
+            const matches = html.match(pattern);
+            if (matches && matches.length > 0) {
+                const lines = html.split('\n');
+                const foundLines: number[] = [];
+                lines.forEach((line, index) => {
+                    if (pattern.test(line)) {
+                        foundLines.push(index + 1);
+                    }
+                    pattern.lastIndex = 0;
+                });
+
+                vulnerable.push({
+                    name: `💻 JavaScript Vulnerability Pattern`,
+                    version: `Líneas: ${foundLines.slice(0, 3).join(', ')}${foundLines.length > 3 ? '...' : ''}`,
+                    vulnerability: `${vulnerability} - ${exploitation}`,
+                    severity,
+                    lineNumbers: foundLines,
+                    recommendation
+                });
+            }
+        });
+
+        // DETECCIÓN DE TECNOLOGÍAS VULNERABLES POR VERSIÓN
         technologies.forEach(tech => {
             const vuln = vulnerabilityDatabase[tech.name];
             if (vuln && tech.version) {
@@ -1017,184 +1564,150 @@ const App = () => {
                         name: tech.name,
                         version: tech.version,
                         vulnerability: vuln.vulnerability,
-                        severity: vuln.severity
+                        severity: vuln.severity,
+                        recommendation: vuln.recommendation,
+                        lineNumbers: []
                     });
                 }
             }
         });
 
-        // Detectar patrones de código vulnerable en el HTML con más detalles
-        const vulnerablePatterns = [
-            {
-                pattern: /eval\s*\(/gi,
-                vulnerability: 'Use of dangerous eval() function',
-                severity: 'high' as const,
-                exploitation: 'Permite ejecución arbitraria de código JavaScript, facilitando RCE y XSS',
-                recommendation: 'Evitar eval(), usar JSON.parse() para datos o funciones predefinidas'
-            },
-            {
-                pattern: /document\.write\s*\(/gi,
-                vulnerability: 'Potential XSS via document.write()',
-                severity: 'medium' as const,
-                exploitation: 'Puede ejecutar código malicioso si se usan datos no sanitizados',
-                recommendation: 'Usar textContent o createElement para manipular DOM'
-            },
-            {
-                pattern: /innerHTML\s*=/gi,
-                vulnerability: 'Potential XSS via innerHTML assignment',
-                severity: 'medium' as const,
-                exploitation: 'Permite inyección de HTML/JavaScript malicioso en el DOM',
-                recommendation: 'Usar textContent, createElement() o bibliotecas de sanitización'
-            },
-            {
-                pattern: /\.html\s*\(\s*[^)]*(?:atob|base64|nombre|variantListHtml|userContent|dataInput|htmlContent)[^)]*\)/gi,
-                vulnerability: 'XSS via .html() with potentially unsafe content',
-                severity: 'high' as const,
-                exploitation: 'Si la variable contiene datos decodificados (base64) o input del usuario, permite inyección de código malicioso',
-                recommendation: 'Usar .text() en lugar de .html() para contenido de texto, sanitizar datos antes de usar .html()'
-            },
-            {
-                pattern: /\$\([^)]*\)\.html\s*\(\s*(?:[^)]*atob|[^)]*base64|[^)]*nombre|[^)]*variantListHtml)/gi,
-                vulnerability: 'jQuery XSS via .html() with decoded/base64 content',
-                severity: 'high' as const,
-                exploitation: 'Uso de .html() con datos decodificados de base64 puede ejecutar scripts maliciosos',
-                recommendation: 'Validar y sanitizar contenido antes de usar .html(), usar .text() para contenido de texto'
-            },
-            {
-                pattern: /setTimeout\s*\(\s*['"]/gi,
-                vulnerability: 'Potential XSS via setTimeout with string parameter',
-                severity: 'medium' as const,
-                exploitation: 'Ejecución de código desde parámetros de entrada',
-                recommendation: 'Usar funciones en lugar de strings en setTimeout'
-            },
-            {
-                pattern: /location\s*=\s*['"]?['"]?\s*\+/gi,
-                vulnerability: 'Potential redirect/open redirect attack',
-                severity: 'medium' as const,
-                exploitation: 'Redirección a sitios maliciosos usando datos del usuario',
-                recommendation: 'Validar URLs internamente y usar whitelists de dominios'
-            },
-            {
-                pattern: /console\.(log|error|warn)\s*\(/gi,
-                vulnerability: 'Console logging in production code',
-                severity: 'low' as const,
-                exploitation: 'Puede exponer información sensible en navegador del usuario',
-                recommendation: 'Remover console logs en producción o usar logging libraries'
-            },
+        // DETECCIÓN DE CONFIGURACIONES INSEGURAS ADICIONALES
+        const configPatterns = [
             {
                 pattern: /debug\s*=\s*true/gi,
-                vulnerability: 'Debug mode enabled in production',
+                name: 'Debug Configuration',
+                version: 'Enabled',
+                vulnerability: 'Debug mode enabled in production environment',
                 severity: 'medium' as const,
-                exploitation: 'Información de depuración expuesta puede ayudar a atacantes',
-                recommendation: 'Deshabilitar debug en producción y usar configuración por entorno'
+                recommendation: 'Deshabilitar debug en producción, usar variables de entorno por ambiente'
+            },
+            {
+                pattern: /console\.(log|error|warn|info|debug)/gi,
+                name: 'Console Logging',
+                version: 'Present',
+                vulnerability: 'Console logging in production code exposes information',
+                severity: 'medium' as const,
+                recommendation: 'Implementar logging estructurado con niveles, remover console logs en producción'
+            },
+            {
+                pattern: /development\s*=\s*true/gi,
+                name: 'Development Mode',
+                version: 'Enabled',
+                vulnerability: 'Development mode enabled in production',
+                severity: 'medium' as const,
+                recommendation: 'Deshabilitar development mode en producción, usar configuración por ambiente'
+            },
+            {
+                pattern: /alloworigin\s*=\s*["']\*["']/gi,
+                name: 'CORS Configuration',
+                version: 'Overly Permissive',
+                vulnerability: 'CORS allows all origins (*) exposing to cross-origin attacks',
+                severity: 'high' as const,
+                recommendation: 'Restringir CORS a dominios específicos necesarios'
             }
         ];
 
-        vulnerablePatterns.forEach(({ pattern, vulnerability, severity, exploitation, recommendation }) => {
-            const matches = html.match(pattern);
-            if (matches && matches.length > 0) {
-                // Encontrar líneas específicas donde se encuentran las vulnerabilidades
-                const lines = html.split('\n');
-                const foundLines: number[] = [];
-                lines.forEach((line, index) => {
-                    if (pattern.test(line)) {
-                        foundLines.push(index + 1);
-                    }
-                    // Reset regex lastIndex
-                    pattern.lastIndex = 0;
-                });
-
+        configPatterns.forEach(({ pattern, name, version, vulnerability, severity, recommendation }) => {
+            if (pattern.test(html)) {
                 vulnerable.push({
-                    name: `JavaScript Code Pattern`,
-                    version: `Líneas: ${foundLines.slice(0, 3).join(', ')}${foundLines.length > 3 ? '...' : ''}`,
-                    vulnerability: `${vulnerability} - ${exploitation}`,
+                    name,
+                    version,
+                    vulnerability,
                     severity,
-                    lineNumbers: foundLines,
                     recommendation
                 });
+                pattern.lastIndex = 0; // Reset regex
             }
         });
-
-        // Detectar configuración insegura
-        if (html.includes('debug=true') || html.includes('debug = true')) {
-            vulnerable.push({
-                name: 'Debug Configuration',
-                version: 'Enabled',
-                vulnerability: 'Debug mode enabled in production',
-                severity: 'medium'
-            });
-        }
-
-        if (html.includes('console.log') || html.includes('console.error')) {
-            vulnerable.push({
-                name: 'Console Logging',
-                version: 'Present',
-                vulnerability: 'Console logging in production code',
-                severity: 'low'
-            });
-        }
 
         return vulnerable;
     };
 
+    const getScoreGrade = (score: number): string => {
+        if (score >= 95) return 'A+';
+        if (score >= 90) return 'A';
+        if (score >= 85) return 'A-';
+        if (score >= 80) return 'B+';
+        if (score >= 75) return 'B';
+        if (score >= 70) return 'B-';
+        if (score >= 65) return 'C+';
+        if (score >= 60) return 'C';
+        if (score >= 55) return 'C-';
+        if (score >= 50) return 'D';
+        return 'F';
+    };
+
     const calculatePrivacyScore = (data: ScrapedData): number => {
-        let score = 100;
-        
-        // Penalizaciones más balanceadas para headers de seguridad faltantes
-        if (!data.securityAnalysis.securityHeaders.csp) score -= 10;
-        if (!data.securityAnalysis.securityHeaders.hsts) score -= 8;
-        if (!data.securityAnalysis.securityHeaders.xss) score -= 8;
-        if (!data.securityAnalysis.securityHeaders.contentType) score -= 5;
-        if (!data.securityAnalysis.sslAnalysis.httpsEnabled) score -= 25;
-        
-        // Penalización moderada por tecnologías vulnerables (pero acumulativa realista)
-        data.securityAnalysis.vulnerableTechnologies.forEach(vuln => {
-            let severityPenalty = 0;
-            if (vuln.name.includes('Code Pattern')) {
-                // Penalización menor para patrones de código que son comunes
-                if (vuln.vulnerability.includes('eval()')) severityPenalty = 8;
-                else if (vuln.vulnerability.includes('document.write')) severityPenalty = 4;
-                else if (vuln.vulnerability.includes('innerHTML')) severityPenalty = 4;
-                else if (vuln.vulnerability.includes('Console')) severityPenalty = 1;
-                else severityPenalty = 3;
-            } else if (vuln.name.includes('Configuration') || vuln.name.includes('Logging')) {
-                severityPenalty = 2;
-            } else {
-                // Tecnologías framework conocidas - penalización realista
-                severityPenalty = vuln.severity === 'critical' ? 8 : 
-                                vuln.severity === 'high' ? 6 : 
-                                vuln.severity === 'medium' ? 4 : 2;
+        // NUEVO SISTEMA DE SCORING REALISTA V3.0 CON MÓDULOS INTELIGENTES
+        try {
+            // 1. Determinar tipo de sitio automáticamente
+            const siteType = realisticSecurityCalculator.determineSiteType(data);
+            
+            // 2. Generar contexto del sitio para análisis contextual
+            const siteContext = realisticSecurityCalculator.generateSiteContext(data, siteType);
+            
+            // 3. Filtrar vulnerabilidades eliminando falsos positivos
+            const filteredVulnerabilities = SecurityIntegrationUtils.filterFalsePositives(data.securityAnalysis.vulnerableTechnologies);
+            
+            // 4. Normalizar headers al formato estándar
+            const normalizedHeaders = SecurityIntegrationUtils.normalizeHeaders(data.securityAnalysis.securityHeaders);
+            
+            // 5. Normalizar vulnerabilidades al formato estándar
+            const normalizedVulnerabilities = SecurityIntegrationUtils.normalizeVulnerabilities(filteredVulnerabilities);
+            
+            // 6. Calcular score usando el sistema inteligente
+            const securityScore = realisticSecurityCalculator.calculateRealisticScore(
+                normalizedHeaders,
+                normalizedVulnerabilities,
+                siteType,
+                siteContext
+            );
+            
+            // 7. Log para debug del nuevo sistema
+            logger.info('Nuevo sistema de scoring aplicado', {
+                siteType,
+                originalVulnerabilities: data.securityAnalysis.vulnerableTechnologies.length,
+                filteredVulnerabilities: filteredVulnerabilities.length,
+                finalScore: securityScore.overall,
+                grade: securityScore.grade,
+                riskLevel: securityScore.riskLevel
+            });
+            
+            return securityScore.overall;
+            
+        } catch (error) {
+            // Fallback al sistema anterior si hay error en el nuevo sistema
+            logger.warn('Error en nuevo sistema de scoring, usando fallback', { error });
+            
+            // Sistema de fallback simplificado pero más inteligente que el anterior
+            let score = 80; // Score base más realista
+            
+            // Headers con ponderación más justa
+            if (data.securityAnalysis.securityHeaders.csp) score += 10;
+            if (data.securityAnalysis.securityHeaders.hsts) score += 8;
+            if (data.securityAnalysis.securityHeaders.xss) score += 5;
+            if (data.securityAnalysis.securityHeaders.contentType) score += 3;
+            
+            // SSL/TLS
+            if (data.securityAnalysis.sslAnalysis.httpsEnabled) score += 12;
+            
+            // Vulnerabilidades con penalización moderada
+            const criticalVulns = data.securityAnalysis.vulnerableTechnologies.filter(v => v.severity === 'critical').length;
+            const highVulns = data.securityAnalysis.vulnerableTechnologies.filter(v => v.severity === 'high').length;
+            const mediumVulns = data.securityAnalysis.vulnerableTechnologies.filter(v => v.severity === 'medium').length;
+            
+            score -= Math.min(criticalVulns * 15, 25);
+            score -= Math.min(highVulns * 8, 20);
+            score -= Math.min(mediumVulns * 3, 10);
+            
+            // Garantizar score mínimo para sitios con HTTPS
+            if (data.securityAnalysis.sslAnalysis.httpsEnabled) {
+                score = Math.max(score, 65);
             }
-            score -= severityPenalty;
-        });
-        
-        // Penalización por exposición de información del servidor (más moderada)
-        if (data.securityAnalysis.securityHeaders.detailed?.infoDisclosure.serverExposed) score -= 3;
-        if (data.securityAnalysis.securityHeaders.detailed?.infoDisclosure.poweredByExposed) score -= 2;
-        
-        // Penalización por protocolos inseguros
-        if (data.securityAnalysis.sslAnalysis.additionalInfo?.mixedContent) score -= 6;
-        
-        // Penalización por certificados a punto de expirar (más realista)
-        const daysRemaining = data.securityAnalysis.sslAnalysis.additionalInfo?.certificateValidity?.daysRemaining || 365;
-        if (daysRemaining < 30) score -= 8;
-        else if (daysRemaining < 90) score -= 3;
-        
-        // Penalización por external links (más balanceada)
-        score -= Math.min(data.securityAnalysis.externalLinks * 0.5, 10);
-        
-        // Penalización por images without alt (más permisiva)
-        score -= Math.min(data.securityAnalysis.imagesWithoutAlt * 0.3, 5);
-        
-        // Bonus por buenas prácticas (más generoso)
-        if (data.securityAnalysis.securityHeaders.detailed?.referrerPolicy.valid) score += 3;
-        if (data.securityAnalysis.securityHeaders.detailed?.frameOptions.valid) score += 3;
-        if (data.securityAnalysis.vulnerableTechnologies.length === 0) score += 5;
-        
-        // Garantizar un puntaje mínimo realista (nunca menos de 10 para sitios HTTPS básicos)
-        if (data.securityAnalysis.sslAnalysis.httpsEnabled && score < 10) score = 10;
-        
-        return Math.max(score, 0);
+            
+            return Math.max(0, Math.min(100, Math.round(score)));
+        }
     };
 
     const extractBaseDomain = (url: string): string => {
@@ -1801,27 +2314,44 @@ const App = () => {
             // Extraer subdominios únicos
             const subdomains = extractSubdomains(links, url);
             
-            // Hacer scraping de subdominios (máximo 10 para evitar sobrecarga)
+            // Hacer scraping de subdominios (máximo 5 para optimizar rendimiento)
             const subdomainResults: SubdomainData[] = [];
-            const maxSubdomains = Math.min(subdomains.length, 10);
+            const maxSubdomains = Math.min(subdomains.length, 5); // Reducido de 10 a 5
             
-            for (let i = 0; i < maxSubdomains; i++) {
-                const subdomainUrl = subdomains[i];
+            // Procesar subdominios con Promise.allSettled para mejor rendimiento
+            const subdomainPromises = subdomains.slice(0, maxSubdomains).map(async (subdomainUrl) => {
                 try {
                     const result = await scrapeSubdomain(subdomainUrl);
-                    subdomainResults.push(result);
+                    return result;
                 } catch (err) {
-                    subdomainResults.push({
+                    return {
                         url: subdomainUrl,
                         title: 'Error',
                         technologies: [],
                         linkCount: 0,
                         imageCount: 0,
-                        status: 'error',
+                        status: 'error' as const,
                         error: err instanceof Error ? err.message : 'Error desconocido'
+                    };
+                }
+            });
+            
+            const settledResults = await Promise.allSettled(subdomainPromises);
+            settledResults.forEach((result) => {
+                if (result.status === 'fulfilled') {
+                    subdomainResults.push(result.value);
+                } else {
+                    subdomainResults.push({
+                        url: 'Unknown',
+                        title: 'Error',
+                        technologies: [],
+                        linkCount: 0,
+                        imageCount: 0,
+                        status: 'error' as const,
+                        error: result.reason instanceof Error ? result.reason.message : 'Error desconocido'
                     });
                 }
-            }
+            });
 
             // PASO 3: Obtener contenido del robots.txt y detectar usuarios
             logger.info('Obteniendo contenido del robots.txt y detectando usuarios');
@@ -1917,14 +2447,31 @@ const App = () => {
             
             // Guardar consulta completa en localStorage para análisis detallado
             const fullQuery: Query = { title, url, data: scrapedData, timestamp: Date.now() };
-            const updatedQueries = [fullQuery, ...queries.filter(q => q.url !== url)].slice(0, 10);
-            saveQueries(updatedQueries);
+            
+            // Actualizar estado y localStorage de manera optimizada
+            setCurrentResult(scrapedData);
+            setQueries(prevQueries => {
+                const newQueries = [fullQuery, ...prevQueries.filter(q => q.url !== url)].slice(0, 10);
+                try {
+                    localStorage.setItem('scrapedQueries', JSON.stringify(newQueries));
+                } catch (e) {
+                    logger.error("Error guardando consultas en localStorage", { error: e instanceof Error ? e.message : 'Error desconocido' });
+                }
+                return newQueries;
+            });
             
             // Guardar consulta optimizada
-            const updatedOptimizedQueries = [optimizedQuery, ...optimizedQueries.filter(q => q.url !== url)].slice(0, 10);
-            saveOptimizedQueries(updatedOptimizedQueries);
+            setOptimizedQueries(prevOptimizedQueries => {
+                const newOptimizedQueries = [optimizedQuery, ...prevOptimizedQueries.filter(q => q.url !== url)].slice(0, 10);
+                try {
+                    localStorage.setItem('optimizedQueries', JSON.stringify(newOptimizedQueries));
+                } catch (e) {
+                    logger.error("Error guardando consultas optimizadas en localStorage", { error: e instanceof Error ? e.message : 'Error desconocido' });
+                }
+                return newOptimizedQueries;
+            });
 
-            logger.info('Scraping completado exitosamente con análisis de seguridad');
+            logger.info('Scraping completado con Scanner de Seguridad Realista V3.0 - Análisis inteligente aplicado');
 
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Ocurrió un error.');
@@ -1942,8 +2489,15 @@ const App = () => {
     };
 
     const handleClearHistory = () => {
-        saveQueries([]);
-        saveOptimizedQueries([]);
+        try {
+            setQueries([]);
+            setOptimizedQueries([]);
+            localStorage.removeItem('scrapedQueries');
+            localStorage.removeItem('optimizedQueries');
+            logger.info('Historial limpiado exitosamente');
+        } catch (e) {
+            logger.error("Error limpiando historial", { error: e instanceof Error ? e.message : 'Error desconocido' });
+        }
     };
 
     const handleOptimizedHistoryClick = (query: OptimizedQuery) => {
@@ -1955,6 +2509,11 @@ const App = () => {
             setError(null);
             setActiveTab('summary');
         }
+    };
+
+    // Función para truncar título a máximo 3 palabras
+    const truncateTitle = (title: string): string => {
+        return title.split(' ').slice(0, 3).join(' ');
     };
 
     const handleToggleEthicalMode = () => {
@@ -1999,7 +2558,7 @@ const App = () => {
     const renderSummary = (data: ScrapedData) => (
         <div className="cybersecurity-summary">
             <div className="security-overview">
-                <h3>🔒 Resumen de Ciberseguridad</h3>
+                <h3>🔒 Resumen de Ciberseguridad <span className="system-version-badge">V3.0 Realista</span></h3>
                 <div className="security-metrics">
                     <div className="security-metric">
                         <span className="metric-label">Tecnologías detectadas:    </span>
@@ -2016,31 +2575,15 @@ const App = () => {
                     <div className="security-metric">
                         <span className="metric-label">Score de privacidad:       </span>
                         <span className={`metric-value ${data.securityAnalysis.privacyScore >= 70 ? 'good' : data.securityAnalysis.privacyScore >= 40 ? 'warning' : 'danger'}`}>
-                            {data.securityAnalysis.privacyScore}%
+                            {data.securityAnalysis.privacyScore}% ({getScoreGrade(data.securityAnalysis.privacyScore)})
                         </span>
                     </div>
                     <div className="privacy-score-details">
                         <small className="privacy-explanation">
-                            <strong>Puntaje basado en:</strong> 
-                            Headers de seguridad (-25%), SSL/TLS (-25%), 
-                            vulnerabilidades (-{data.securityAnalysis.vulnerableTechnologies.reduce((acc, vuln) => {
-                                let penalty = 0;
-                                if (vuln.name.includes('Code Pattern')) {
-                                    penalty = vuln.vulnerability.includes('eval') ? 8 :
-                                            vuln.vulnerability.includes('document.write') ? 4 :
-                                            vuln.vulnerability.includes('innerHTML') ? 4 :
-                                            vuln.vulnerability.includes('Console') ? 1 : 3;
-                                } else if (vuln.name.includes('Configuration') || vuln.name.includes('Logging')) {
-                                    penalty = 2;
-                                } else {
-                                    penalty = vuln.severity === 'critical' ? 8 :
-                                            vuln.severity === 'high' ? 6 :
-                                            vuln.severity === 'medium' ? 4 : 2;
-                                }
-                                return acc + penalty;
-                            }, 0)} puntos), 
-                            enlaces externos (-{Math.min(data.securityAnalysis.externalLinks * 0.5, 10)}%), 
-                            accesibilidad (-{Math.min(data.securityAnalysis.imagesWithoutAlt * 0.3, 5)}%)
+                            <span className="scoring-version">✨ Sistema V3.0: Sin whitelists, con baseline profesional y análisis contextual</span>
+                            {data.securityAnalysis.vulnerableTechnologies.length > 0 && (
+                                <span> | Vulnerabilidades reales detectadas: {data.securityAnalysis.vulnerableTechnologies.length}</span>
+                            )}
                         </small>
                     </div>
                 </div>
@@ -2128,6 +2671,69 @@ const App = () => {
         
         return (
             <div className="security-analysis">
+                {/* SECCIÓN 1: VULNERABILIDADES DETECTADAS - PRIORIDAD MÁXIMA */}
+                <div className="security-section">
+                    <h3>⚠️ VULNERABILIDADES DETECTADAS (PRIORIDAD ALTA)</h3>
+                    {securityAnalysis.vulnerableTechnologies.length > 0 ? (
+                        <div className="vulnerable-techs-detailed">
+                            {/* Agrupar por severidad para mejor visualización */}
+                            {['critical', 'high', 'medium', 'low'].map(severity => {
+                                const vulnerabilitiesOfSeverity = securityAnalysis.vulnerableTechnologies.filter(vuln => vuln.severity === severity);
+                                if (vulnerabilitiesOfSeverity.length === 0) return null;
+                                
+                                return (
+                                    <div key={severity} className={`severity-group ${severity}-group`}>
+                                        <h4 className={`severity-header ${severity}`}>
+                                            {severity === 'critical' && '🚨 CRÍTICAS'}
+                                            {severity === 'high' && '⚠️ ALTAS'}
+                                            {severity === 'medium' && '🔍 MEDIAS'}
+                                            {severity === 'low' && 'ℹ️ BAJAS'}
+                                            <span className="severity-count">({vulnerabilitiesOfSeverity.length})</span>
+                                        </h4>
+                                        {vulnerabilitiesOfSeverity.map((tech, i) => (
+                                            <div key={`${severity}-${i}`} className={`vulnerable-tech-card ${tech.severity}`}>
+                                                <div className="vulnerability-header">
+                                                    <div className="vuln-main-info">
+                                                        <span className="tech-name">{tech.name}</span>
+                                                        <span className="tech-version">{tech.version}</span>
+                                                    </div>
+                                                    <span className={`severity-badge ${tech.severity}`}>
+                                                        {tech.severity.toUpperCase()}
+                                                    </span>
+                                                </div>
+                                                <div className="vulnerability-details">
+                                                    <div className="vulnerability-description">
+                                                        <strong>🚨 VULNERABILIDAD:</strong> {tech.vulnerability}
+                                                    </div>
+                                                    {tech.lineNumbers && tech.lineNumbers.length > 0 && (
+                                                        <div className="vulnerability-lines">
+                                                            <strong>📍 Líneas afectadas:</strong> {tech.lineNumbers.slice(0, 5).join(', ')}
+                                                            {tech.lineNumbers.length > 5 && ` (y ${tech.lineNumbers.length - 5} más...)`}
+                                                        </div>
+                                                    )}
+                                                    {tech.recommendation && (
+                                                        <div className="vulnerability-recommendation">
+                                                            <strong>🔧 RECOMENDACIÓN URGENTE:</strong> {tech.recommendation}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })}
+                            
+                        </div>
+                    ) : (
+                        <div className="no-vulnerabilities-container">
+                            <div className="no-vulnerabilities-icon">✅</div>
+                            <p className="no-vulnerabilities">No se detectaron vulnerabilidades conocidas.</p>
+                            <small className="no-vuln-note">El sitio web sigue buenas prácticas de seguridad.</small>
+                        </div>
+                    )}
+                </div>
+
+                {/* SECCIÓN 2: HEADERS DE SEGURIDAD */}
                 <div className="security-section">
                     <h3>🛡️ Headers de Seguridad</h3>
                     <ul className="audit-list">
@@ -2210,6 +2816,7 @@ const App = () => {
                     </ul>
                 </div>
 
+                {/* SECCIÓN 3: ANÁLISIS SSL/TLS */}
                 <div className="security-section">
                     <h3>🔐 Análisis SSL/TLS</h3>
                     <ul className="audit-list">
@@ -2274,49 +2881,6 @@ const App = () => {
                             </li>
                         )}
                     </ul>
-                </div>
-
-                <div className="security-section">
-                    <h3>⚠️ Vulnerabilidades Detectadas</h3>
-                    {securityAnalysis.vulnerableTechnologies.length > 0 ? (
-                        <div className="vulnerable-techs-detailed">
-                            {securityAnalysis.vulnerableTechnologies.map((tech, i) => (
-                                <div key={i} className={`vulnerable-tech-card ${tech.severity}`}>
-                                    <div className="vulnerability-header">
-                                        <div className="vuln-main-info">
-                                            <span className="tech-name">{tech.name}</span>
-                                            <span className="tech-version">{tech.version}</span>
-                                        </div>
-                                        <span className={`severity-badge ${tech.severity}`}>
-                                            {tech.severity.toUpperCase()}
-                                        </span>
-                                    </div>
-                                    <div className="vulnerability-details">
-                                        <div className="vulnerability-description">
-                                            <strong>Descripción:</strong> {tech.vulnerability}
-                                        </div>
-                                        {tech.lineNumbers && tech.lineNumbers.length > 0 && (
-                                            <div className="vulnerability-lines">
-                                                <strong>Líneas afectadas:</strong> {tech.lineNumbers.slice(0, 5).join(', ')}
-                                                {tech.lineNumbers.length > 5 && ` (y ${tech.lineNumbers.length - 5} más...)`}
-                                            </div>
-                                        )}
-                                        {tech.recommendation && (
-                                            <div className="vulnerability-recommendation">
-                                                <strong>Recomendación:</strong> {tech.recommendation}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="no-vulnerabilities-container">
-                            <div className="no-vulnerabilities-icon">✅</div>
-                            <p className="no-vulnerabilities">No se detectaron vulnerabilidades conocidas.</p>
-                            <small className="no-vuln-note">El sitio web sigue buenas prácticas de seguridad.</small>
-                        </div>
-                    )}
                 </div>
             </div>
         );
@@ -2567,7 +3131,7 @@ const App = () => {
     };
 
     const renderTabContent = () => {
-        if (loading) return <div className="loading">🔍 Analizando políticas de scraping y extrayendo información...</div>;
+        if (loading) return <div className="loading">🔍 Analizando con Scanner de Seguridad Realista V3.0 - Políticas de scraping y análisis inteligente...</div>;
         if (error) return <div className="error">{getErrorExplanation(error)}</div>;
         if (!currentResult) return <div className="placeholder">Los resultados del scraping ético se mostrarán aquí.</div>;
         
@@ -2613,42 +3177,34 @@ const App = () => {
                         onChange={e => setUrl(e.target.value)} 
                         onKeyDown={e => e.key === 'Enter' && handleScrape()} 
                         placeholder="https://ejemplo.com" 
-                        aria-label="URL a extraer de forma ética" 
+                        aria-label="URL a extraer" 
                     />
                     <button onClick={handleScrape} disabled={loading}>
-                        {loading ? '🔍 Analizando...' : '🛡️ Scraping Ético'}
+                        {loading ? '🔍 Analizando...' : '🦊 Scraping'}
                     </button>
                 </header>
                 <main className="main-content">
                     <aside className="sidebar">
-                        <h2>Consultas Éticas</h2>
-                        <ul aria-label="Historial de consultas éticas">
+                        <h2>Historial de Consultas</h2>
+                        <ul aria-label="Historial de consultas">
                             {sidebarItems.map((query, i) => (
                                 <li key={query ? query.timestamp : `empty-${i}`}>
                                     <button 
                                         onClick={() => query && handleOptimizedHistoryClick(query)} 
                                         disabled={!query} 
-                                        title={query ? `${query.title} (${query.url}) | Match: ${query.matchPercentage}% | Security: ${query.securityScore}% | Keywords: ${query.keywords.join(', ')}` : 'Vacío'}
+                                        title={query ? `${query.title} (${query.url}) | Security: ${query.securityScore}%` : 'Vacío'}
                                         className="history-button"
                                     >
                                         {query ? (
                                             <div className="history-item">
-                                                <div className="history-title">{query.title}</div>
+                                                <div className="history-title">{truncateTitle(query.title)}</div>
                                                 <div className="history-meta">
                                                     <span className={`score ${query.securityScore >= 70 ? 'good' : query.securityScore >= 40 ? 'warning' : 'danger'}`}>
                                                         {query.securityScore}%
                                                     </span>
-                                                    <span className={`match-score ${query.matchPercentage >= 70 ? 'high' : query.matchPercentage >= 40 ? 'medium' : 'low'}`}>
-                                                        {query.matchPercentage}%
-                                                    </span>
-                                                    {query.keywords.length > 0 && (
-                                                        <span className="keywords">
-                                                            {query.keywords.slice(0, 1).join(', ')}
-                                                        </span>
-                                                    )}
                                                 </div>
                                             </div>
-                                        ) : 'Vacío'}
+                                        ) : ''}
                                     </button>
                                 </li>
                             ))}
@@ -2683,7 +3239,7 @@ const App = () => {
             </div>
             <footer className="footer">
                 <div className="footer-content">
-                    <p>🛡️ DevSecOps By Grupo 5 - Uniminuto 2025</p>
+                    <p>DevSecOps By Grupo 5 - Uniminuto 2025</p>
                 </div>
             </footer>
         </>

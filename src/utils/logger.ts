@@ -33,36 +33,31 @@ class SecureLogger {
     };
   }
 
-  private shouldLog(level: LogEntry['level']): boolean {
-    const logLevels = { debug: 0, info: 1, warn: 2, error: 3 };
-    const currentLevel = this.isDevelopment ? 0 : 1; // Solo info+ en producción
-    
-    return logLevels[level] >= currentLevel;
-  }
-
   private async persistLog(entry: LogEntry): Promise<void> {
-    if (!this.shouldLog(entry.level)) return;
-
-    // En desarrollo, usar console solo si es apropiado
-    if (this.isDevelopment && entry.level !== 'error') {
-      const style = this.getConsoleStyle(entry.level);
-      console.log(`%c[${entry.level.toUpperCase()}] ${entry.message}`, style);
+    // En desarrollo, usar console para todos los niveles
+    if (this.isDevelopment) {
+      switch (entry.level) {
+        case 'debug':
+          console.debug(`[DEBUG] ${entry.message}`, entry.context);
+          break;
+        case 'info':
+          console.info(`[INFO] ${entry.message}`, entry.context);
+          break;
+        case 'warn':
+          console.warn(`[WARN] ${entry.message}`, entry.context);
+          break;
+        case 'error':
+          console.error(`[ERROR] ${entry.message}`, entry.context);
+          break;
+      }
     }
 
-    // En producción, enviar logs a endpoint seguro o localStorage
+    // En producción, enviar logs de 'warn' y 'error' a un servicio de logging
     if (!this.isDevelopment) {
-      this.queueForTransmission(entry);
+      if (entry.level === 'warn' || entry.level === 'error') {
+        this.queueForTransmission(entry);
+      }
     }
-  }
-
-  private getConsoleStyle(level: LogEntry['level']): string {
-    const styles = {
-      debug: 'color: #6c757d',
-      info: 'color: #0d6efd',
-      warn: 'color: #ffc107',
-      error: 'color: #dc3545; font-weight: bold'
-    };
-    return styles[level];
   }
 
   private queueForTransmission(entry: LogEntry): void {

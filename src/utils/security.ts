@@ -62,10 +62,10 @@ export function sanitizeUserInput(input: string, maxLength: number = 1000): Sani
 
   // Escapar HTML remaining
   sanitized = sanitized
-    .replace(/&/g, '&')
-    .replace(/</g, '<')
-    .replace(/>/g, '>')
-    .replace(/"/g, '"')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
     .replace(/'/g, '&#x27;');
 
   return {
@@ -129,7 +129,7 @@ export function validateScrapingUrl(url: string): { isValid: boolean; errors: st
 export function generateCSPHeader(): string {
   return [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://aistudiocdn.com",
+    "script-src 'self' https://aistudiocdn.com",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https:",
     "font-src 'self' https://aistudiocdn.com",
