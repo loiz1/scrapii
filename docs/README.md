@@ -8,6 +8,8 @@
 
 ---
 
+## Nota Importante consumir la imagen en una red diferente a la de la universidad
+
 ## 📋 Descripción del Proyecto
 
 **Scrapii** es una aplicación web avanzada de scraping ético que integra análisis profundo de ciberseguridad. Diseñada para desarrolladores, analistas de seguridad y profesionales DevSecOps, la herramienta proporciona un enfoque responsable y técnicamente robusto para el análisis de sitios web.
