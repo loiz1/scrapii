@@ -163,6 +163,8 @@ docker pull loizzz/web-scrapi:latest
 # Descargar y ejecutar la imagen más reciente
 docker run -d -p 80:80 --name web-scrapi loizzz/web-scrapi:latest
 
+#Ir al navegador localhost en el puerto 80 la aplicacion estara corriendo y lista para Scrapear
+
 # Con volumen para persistencia
 docker run -d \
   -p 80:80 \
@@ -208,13 +210,6 @@ docker run -d \
 - 📱 Interfaz responsive y moderna
 
 ---
-
-
-## 📞 Contacto y Soporte
-
-### Desarrollador Principal
-- **GitHub**: [@loiz1 ](https://github.com/loiz1)
-- **Repositorio**: [scrapii](https://github.com/loiz1/scrapii)
 
 ### Docker Hub
 - **Imagen**: [loizzz/web-scrapi](https://hub.docker.com/r/loiz1/scrapii)
