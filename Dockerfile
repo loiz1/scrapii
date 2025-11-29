@@ -13,6 +13,9 @@ COPY package*.json ./
 # Instalar dependencias de desarrollo para el build
 RUN npm ci
 
+# Instalar terser para minificación en producción (requerido por Vite v6)
+RUN npm install terser --save-dev
+
 # Copiar el código fuente
 COPY . .
 
